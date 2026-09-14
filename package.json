@@ -1,0 +1,26 @@
+{
+  "name": "@ziionlu/implication-chain-set",
+  "version": "0.0.1",
+  "description": "Flexible implication chain set utilities.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [],
+  "author": "",
+  "scripts": {
+    "build": "tsup && tsc -b --emitDeclarationOnly --force",
+    "check": "tsc -b",
+    "clean": "rm -rf dist",
+    "test": "vitest run src/**/*.test.ts"
+  }
+}
