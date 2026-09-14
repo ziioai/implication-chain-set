@@ -1,8 +1,9 @@
 {
   "name": "implication-chain-set",
   "version": "0.0.1",
-  "description": "Flexible implication chain set utilities.",
+  "description": "Build and query transitive implication relationships from chains, trees, and graphs.",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -13,14 +14,54 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "README.md",
+    "LICENSE"
   ],
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "implication",
+    "transitive-closure",
+    "graph",
+    "hierarchy",
+    "typescript"
+  ],
+  "author": "ziioai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ziioai/implication-chain-set.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ziioai/implication-chain-set/issues"
+  },
+  "homepage": "https://github.com/ziioai/implication-chain-set#readme",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=11"
+  },
+  "packageManager": "pnpm@11.23.0",
+  "volta": {
+    "node": "24.19.0",
+    "pnpm": "11.23.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "tsup && tsc -b --emitDeclarationOnly --force",
-    "check": "tsc -b",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "clean": "rm -rf dist",
-    "test": "vitest run src/**/*.test.ts"
+    "test": "vitest run tests",
+    "test:package": "node scripts/smoke-package.mjs",
+    "verify": "pnpm run check && pnpm run test && pnpm run build && pnpm run test:package",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run verify"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

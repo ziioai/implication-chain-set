@@ -8,6 +8,7 @@ import type {
 } from "./types.js";
 
 type Direction = "up" | "down" | "all";
+type InternalPathQueryOptions = PathQueryOptions & { explicit?: boolean };
 
 function readonlySet<T>(set: Set<T> | undefined): Set<T> {
   return new Set(set ?? []);
@@ -44,13 +45,12 @@ function normalizeChain(chain: readonly string[]): string[] {
 }
 
 export class ImplicationChainSet {
-  readonly items = new Set<ImplicationItem>();
+  private itemSet = new Set<ImplicationItem>();
 
   private impliedBy = new Map<ImplicationItem, Set<ImplicationItem>>();
   private impliesTo = new Map<ImplicationItem, Set<ImplicationItem>>();
   private explicitNearestAncestors = new Map<ImplicationItem, Set<ImplicationItem>>();
   private explicitNearestDescendants = new Map<ImplicationItem, Set<ImplicationItem>>();
-  private evidenceChains: ImplicationItem[][] = [];
   private nearestAncestorsCache: Map<ImplicationItem, Set<ImplicationItem>> | undefined;
   private nearestDescendantsCache: Map<ImplicationItem, Set<ImplicationItem>> | undefined;
   private farthestAncestorsCache: Map<ImplicationItem, Set<ImplicationItem>> | undefined;
@@ -61,14 +61,17 @@ export class ImplicationChainSet {
     this.addChains(chains);
   }
 
+  get items(): ReadonlySet<ImplicationItem> {
+    return readonlySet(this.itemSet);
+  }
+
   addChain(chain: ImplicationChain): this {
     const normalized = normalizeChain(chain);
     if (normalized.length === 0) return this;
 
-    for (const item of normalized) this.items.add(item);
+    for (const item of normalized) this.itemSet.add(item);
     if (normalized.length === 1) return this;
 
-    this.evidenceChains.push([...normalized]);
     for (let ancestorIndex = 0; ancestorIndex < normalized.length - 1; ancestorIndex++) {
       for (let descendantIndex = ancestorIndex + 1; descendantIndex < normalized.length; descendantIndex++) {
         this.addImplication(normalized[descendantIndex], normalized[ancestorIndex]);
@@ -99,29 +102,26 @@ export class ImplicationChainSet {
 
   addGraphs(graphs: readonly ImplicationGraph[]): this {
     for (const graph of graphs) {
-      for (const node of graph.nodes ?? []) this.items.add(node);
+      for (const node of graph.nodes ?? []) this.itemSet.add(node);
       for (const edge of graph.edges) {
         this.addExplicitImplication(edge.to, edge.from);
-        this.evidenceChains.push([edge.from, edge.to]);
       }
     }
     return this;
   }
 
   addDescendantsTo(ancestor: ImplicationItem, descendants: readonly ImplicationItem[]): this {
-    this.items.add(ancestor);
+    this.itemSet.add(ancestor);
     for (const descendant of descendants) {
       this.addExplicitImplication(descendant, ancestor);
-      this.evidenceChains.push([ancestor, descendant]);
     }
     return this;
   }
 
   addAncestorsTo(descendant: ImplicationItem, ancestors: readonly ImplicationItem[]): this {
-    this.items.add(descendant);
+    this.itemSet.add(descendant);
     for (const ancestor of ancestors) {
       this.addExplicitImplication(descendant, ancestor);
-      this.evidenceChains.push([ancestor, descendant]);
     }
     return this;
   }
@@ -162,28 +162,28 @@ export class ImplicationChainSet {
     return readonlySet(this.explicitNearestAncestors.get(descendant));
   }
 
-  getUpPaths(from: ImplicationItem, to: ImplicationItem): string[][] {
-    return this.getPaths(from, to, "up");
+  getUpPaths(from: ImplicationItem, to: ImplicationItem, options: PathQueryOptions = {}): string[][] {
+    return this.getPaths(from, to, "up", options);
   }
 
-  getDownPaths(from: ImplicationItem, to: ImplicationItem): string[][] {
-    return this.getPaths(from, to, "down");
+  getDownPaths(from: ImplicationItem, to: ImplicationItem, options: PathQueryOptions = {}): string[][] {
+    return this.getPaths(from, to, "down", options);
   }
 
-  getAllPaths(from: ImplicationItem, to: ImplicationItem): string[][] {
-    return this.getPaths(from, to, "all");
+  getAllPaths(from: ImplicationItem, to: ImplicationItem, options: PathQueryOptions = {}): string[][] {
+    return this.getPaths(from, to, "all", options);
   }
 
-  getExplicitUpPaths(from: ImplicationItem, to: ImplicationItem): string[][] {
-    return this.getPaths(from, to, "up", { explicit: true });
+  getExplicitUpPaths(from: ImplicationItem, to: ImplicationItem, options: PathQueryOptions = {}): string[][] {
+    return this.getPaths(from, to, "up", { ...options, explicit: true });
   }
 
-  getExplicitDownPaths(from: ImplicationItem, to: ImplicationItem): string[][] {
-    return this.getPaths(from, to, "down", { explicit: true });
+  getExplicitDownPaths(from: ImplicationItem, to: ImplicationItem, options: PathQueryOptions = {}): string[][] {
+    return this.getPaths(from, to, "down", { ...options, explicit: true });
   }
 
-  getExplicitAllPaths(from: ImplicationItem, to: ImplicationItem): string[][] {
-    return this.getPaths(from, to, "all", { explicit: true });
+  getExplicitAllPaths(from: ImplicationItem, to: ImplicationItem, options: PathQueryOptions = {}): string[][] {
+    return this.getPaths(from, to, "all", { ...options, explicit: true });
   }
 
   getDiagnostics(): ImplicationChainSetDiagnostics {
@@ -197,7 +197,7 @@ export class ImplicationChainSet {
 
   private addTreeWalk(node: TreeNode, chainPrefix: string[]): void {
     const chain = [...chainPrefix, node.name];
-    this.items.add(node.name);
+    this.itemSet.add(node.name);
     if (chain.length > 1) {
       this.addChain(chain);
       this.addExplicitImplication(node.name, chainPrefix[chainPrefix.length - 1]);
@@ -209,8 +209,8 @@ export class ImplicationChainSet {
   }
 
   private addExplicitImplication(descendant: ImplicationItem, ancestor: ImplicationItem): void {
-    this.items.add(descendant);
-    this.items.add(ancestor);
+    this.itemSet.add(descendant);
+    this.itemSet.add(ancestor);
     addToMapSet(this.explicitNearestAncestors, descendant, ancestor);
     addToMapSet(this.explicitNearestDescendants, ancestor, descendant);
     this.addImplication(descendant, ancestor);
@@ -324,13 +324,16 @@ export class ImplicationChainSet {
     from: ImplicationItem,
     to: ImplicationItem,
     direction: Direction,
-    options: PathQueryOptions = {},
+    options: InternalPathQueryOptions = {},
   ): string[][] {
-    if (from === to) return [[from]];
-
     const adjacency = this.pathAdjacency(direction, options.explicit === true);
-    const maxDepth = options.maxDepth ?? Math.max(1, this.items.size + 1);
+    const maxDepth = options.maxDepth ?? Math.max(0, this.itemSet.size - 1);
     const maxPaths = options.maxPaths ?? Number.POSITIVE_INFINITY;
+    if (options.maxDepth !== undefined) this.assertNonNegativeInteger(maxDepth, "maxDepth");
+    if (options.maxPaths !== undefined) this.assertNonNegativeInteger(maxPaths, "maxPaths");
+
+    if (maxPaths === 0) return [];
+    if (from === to) return [[from]];
     const result: string[][] = [];
     const seenPathKeys = new Set<string>();
 
@@ -384,23 +387,52 @@ export class ImplicationChainSet {
     return paths.filter((path) => path.length === maxLength);
   }
 
+  private assertNonNegativeInteger(value: number, name: string): void {
+    if (Number.isInteger(value) && value >= 0) return;
+    throw new RangeError(`${name} must be a non-negative integer`);
+  }
+
   private findCycles(): { items: string[] }[] {
     const cycles: { items: string[] }[] = [];
-    const seen = new Set<string>();
+    const indices = new Map<ImplicationItem, number>();
+    const lowLinks = new Map<ImplicationItem, number>();
+    const stack: ImplicationItem[] = [];
+    const onStack = new Set<ImplicationItem>();
+    let nextIndex = 0;
 
-    for (const item of this.items) {
-      const ancestors = this.impliedBy.get(item);
-      if (ancestors == null) continue;
-      for (const ancestor of ancestors) {
-        if (item === ancestor) continue;
-        if (this.impliedBy.get(ancestor)?.has(item) !== true) continue;
-        const key = [item, ancestor].sort().join("\u0000");
-        if (seen.has(key)) continue;
-        seen.add(key);
-        cycles.push({ items: [item, ancestor] });
+    const visit = (item: ImplicationItem): void => {
+      const index = nextIndex++;
+      indices.set(item, index);
+      lowLinks.set(item, index);
+      stack.push(item);
+      onStack.add(item);
+
+      for (const ancestor of this.impliedBy.get(item) ?? []) {
+        if (!indices.has(ancestor)) {
+          visit(ancestor);
+          lowLinks.set(item, Math.min(lowLinks.get(item)!, lowLinks.get(ancestor)!));
+        } else if (onStack.has(ancestor)) {
+          lowLinks.set(item, Math.min(lowLinks.get(item)!, indices.get(ancestor)!));
+        }
       }
+
+      if (lowLinks.get(item) !== indices.get(item)) return;
+
+      const component: ImplicationItem[] = [];
+      let member: ImplicationItem;
+      do {
+        member = stack.pop()!;
+        onStack.delete(member);
+        component.push(member);
+      } while (member !== item);
+
+      if (component.length > 1) cycles.push({ items: component.sort() });
+    };
+
+    for (const item of this.itemSet) {
+      if (!indices.has(item)) visit(item);
     }
 
-    return cycles;
+    return cycles.sort((left, right) => pathKeyOf(left.items).localeCompare(pathKeyOf(right.items)));
   }
 }

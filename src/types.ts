@@ -25,7 +25,8 @@ export interface ImplicationChainSetDiagnostics {
 }
 
 export interface PathQueryOptions {
-  explicit?: boolean;
+  /** Maximum number of edges to traverse. */
   maxDepth?: number;
+  /** Maximum number of matching paths to collect. */
   maxPaths?: number;
 }
